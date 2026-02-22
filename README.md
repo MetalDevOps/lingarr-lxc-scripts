@@ -6,12 +6,12 @@ Deploy [Lingarr](https://github.com/lingarr-translate/lingarr) directly in a Pro
 
 - Proxmox VE 7.x or 8.x
 - Root access on the Proxmox host
-- Media folders (movies/TV shows) accessible on the host
+- Media folders accessible on the host
 
 ## Quick Start
 
 ```bash
-MOVIES_PATH=/mnt/media/movies TV_PATH=/mnt/media/tv bash create-lxc.sh
+MOUNTS="/mnt/media/media:/media" bash create-lxc.sh
 ```
 
 This creates the container, installs all dependencies, builds Lingarr, and starts the service. The access URL (`http://<IP>:9876`) is printed at the end.
@@ -25,6 +25,28 @@ This creates the container, installs all dependencies, builds Lingarr, and start
 | `update.sh` | Inside LXC | Updates to the latest version |
 | `lingarr.service` | Reference | systemd unit (installed automatically by deploy) |
 | `lingarr.env` | Reference | Environment variables template |
+
+## Media Mounts
+
+Use the `MOUNTS` variable to bind-mount host directories into the container. Format: comma-separated `host_path:container_path` pairs.
+
+**Single mount point:**
+
+```bash
+MOUNTS="/mnt/media/media:/media" bash create-lxc.sh
+```
+
+Inside the LXC: `/media/movies`, `/media/tv`
+
+**Multiple mount points:**
+
+```bash
+MOUNTS="/mnt/media/media:/media,/mnt/media2/media:/media2" bash create-lxc.sh
+```
+
+Inside the LXC: `/media/movies`, `/media/tv`, `/media2/movies`, `/media2/tv`
+
+These paths should match the root folders configured in Radarr/Sonarr.
 
 ## Container Configuration
 
@@ -40,14 +62,12 @@ This creates the container, installs all dependencies, builds Lingarr, and start
 | `DISK_SIZE` | `8` | Root disk in GB |
 | `NET_BRIDGE` | `vmbr0` | Network bridge |
 | `IP_ADDRESS` | `dhcp` | Static IP (e.g. `192.168.1.50/24,gw=192.168.1.1`) or `dhcp` |
-| `MOVIES_PATH` | — | **Required.** Movies path on the host |
-| `TV_PATH` | — | **Required.** TV shows path on the host |
+| `MOUNTS` | — | **Required.** Comma-separated `host_path:container_path` pairs |
 
-Example with static IP:
+Example with all options:
 
 ```bash
-MOVIES_PATH=/mnt/media/movies \
-TV_PATH=/mnt/media/tv \
+MOUNTS="/mnt/media/media:/media,/mnt/media2/media:/media2" \
 IP_ADDRESS="192.168.1.50/24,gw=192.168.1.1" \
 MEMORY=4096 \
 bash create-lxc.sh
@@ -64,8 +84,10 @@ bash create-lxc.sh
 
 /app/config → /opt/lingarr/config/   # Compatibility symlink
 /etc/lingarr/lingarr.env             # Configuration
-/movies                               # Bind mount from host
-/tv                                   # Bind mount from host
+/etc/lingarr/media-paths             # Saved media mount paths
+
+/media                                # Bind mount from host (example)
+/media2                               # Bind mount from host (example)
 ```
 
 ## Lingarr Configuration
@@ -128,3 +150,4 @@ pct enter <CTID>
 - The SQLite database lives in `/opt/lingarr/config/` and persists across updates.
 - The `/app/config` path is hardcoded in Lingarr — the symlink resolves this without modifying source code.
 - Config backups are kept automatically (5 most recent) in `/opt/lingarr/backups/`.
+- Media mount paths are saved to `/etc/lingarr/media-paths` and used to configure systemd `ReadWritePaths`.

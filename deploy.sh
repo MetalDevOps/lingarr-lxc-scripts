@@ -11,6 +11,23 @@ REPO_URL="https://github.com/lingarr-translate/lingarr.git"
 REPO_BRANCH="main"
 
 # =============================================================================
+# Parse arguments
+# =============================================================================
+MEDIA_PATHS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --media-paths)
+            MEDIA_PATHS="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# =============================================================================
 # Helpers
 # =============================================================================
 RED='\033[0;31m'
@@ -164,12 +181,27 @@ fi
 chmod 640 /etc/lingarr/lingarr.env
 chown root:"$LINGARR_USER" /etc/lingarr/lingarr.env
 
+# Save media paths for use by update.sh and systemd
+if [[ -n "$MEDIA_PATHS" ]]; then
+    echo "$MEDIA_PATHS" > /etc/lingarr/media-paths
+    log "Saved media paths: $MEDIA_PATHS"
+fi
+
 # =============================================================================
 # Phase 5: systemd service
 # =============================================================================
 log "=== Phase 5: Installing systemd service ==="
 
-cat > /etc/systemd/system/lingarr.service <<'SVCEOF'
+# Build ReadWritePaths from media paths
+READ_WRITE_PATHS="/opt/lingarr/config"
+if [[ -n "$MEDIA_PATHS" ]]; then
+    IFS=',' read -ra PATHS <<< "$MEDIA_PATHS"
+    for p in "${PATHS[@]}"; do
+        READ_WRITE_PATHS="$READ_WRITE_PATHS $p"
+    done
+fi
+
+cat > /etc/systemd/system/lingarr.service <<SVCEOF
 [Unit]
 Description=Lingarr Subtitle Translation Service
 After=network.target
@@ -188,7 +220,7 @@ SyslogIdentifier=lingarr
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/lingarr/config /movies /tv
+ReadWritePaths=$READ_WRITE_PATHS
 PrivateTmp=true
 LimitNOFILE=65536
 TimeoutStartSec=120

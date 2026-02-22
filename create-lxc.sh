@@ -17,9 +17,11 @@ CORES="${CORES:-2}"
 DISK_SIZE="${DISK_SIZE:-8}"
 NET_BRIDGE="${NET_BRIDGE:-vmbr0}"
 IP_ADDRESS="${IP_ADDRESS:-dhcp}"          # e.g. "192.168.1.50/24,gw=192.168.1.1" or "dhcp"
-MOVIES_PATH="${MOVIES_PATH:-}"            # Required: host path to movies
-TV_PATH="${TV_PATH:-}"                    # Required: host path to TV shows
 DEPLOY_SCRIPT="${DEPLOY_SCRIPT:-$(dirname "$(readlink -f "$0")")/deploy.sh}"
+
+# Media mount points — comma-separated list of host_path:container_path
+# Example: MOUNTS="/mnt/media/media:/media,/mnt/media2/media:/media2"
+MOUNTS="${MOUNTS:-}"
 
 # =============================================================================
 # Helpers
@@ -41,13 +43,26 @@ die()  { err "$@"; exit 1; }
 command -v pveversion &>/dev/null || die "This script must run on a Proxmox VE host."
 [[ $(id -u) -eq 0 ]] || die "This script must run as root."
 
-if [[ -z "$MOVIES_PATH" || -z "$TV_PATH" ]]; then
-    die "MOVIES_PATH and TV_PATH must be set.\n  Usage: MOVIES_PATH=/mnt/media/movies TV_PATH=/mnt/media/tv bash $0"
+if [[ -z "$MOUNTS" ]]; then
+    die "MOUNTS must be set.\n  Usage: MOUNTS=\"/mnt/media/media:/media,/mnt/media2/media:/media2\" bash $0\n  Format: comma-separated host_path:container_path pairs"
 fi
 
-[[ -d "$MOVIES_PATH" ]] || die "MOVIES_PATH does not exist: $MOVIES_PATH"
-[[ -d "$TV_PATH" ]]     || die "TV_PATH does not exist: $TV_PATH"
 [[ -f "$DEPLOY_SCRIPT" ]] || die "deploy.sh not found at: $DEPLOY_SCRIPT"
+
+# Parse and validate mount points
+IFS=',' read -ra MOUNT_PAIRS <<< "$MOUNTS"
+MOUNT_PATHS=()  # Container paths for passing to deploy.sh
+
+for pair in "${MOUNT_PAIRS[@]}"; do
+    host_path="${pair%%:*}"
+    container_path="${pair##*:}"
+
+    [[ "$pair" == *":"* ]] || die "Invalid mount format '$pair'. Expected host_path:container_path"
+    [[ -d "$host_path" ]]  || die "Host path does not exist: $host_path"
+
+    MOUNT_PATHS+=("$container_path")
+    log "Mount: $host_path -> $container_path"
+done
 
 # =============================================================================
 # Auto-detect next available CTID
@@ -100,8 +115,12 @@ pct create "$CTID" "$TEMPLATE_PATH" \
 # Configure bind mounts for media
 # =============================================================================
 log "Configuring media bind mounts ..."
-pct set "$CTID" -mp0 "${MOVIES_PATH},mp=/movies"
-pct set "$CTID" -mp1 "${TV_PATH},mp=/tv"
+for i in "${!MOUNT_PAIRS[@]}"; do
+    pair="${MOUNT_PAIRS[$i]}"
+    host_path="${pair%%:*}"
+    container_path="${pair##*:}"
+    pct set "$CTID" -mp"$i" "${host_path},mp=${container_path}"
+done
 
 # =============================================================================
 # Start the container
@@ -125,8 +144,11 @@ sleep 3  # Extra time for network initialization
 log "Pushing deploy.sh into container ..."
 pct push "$CTID" "$DEPLOY_SCRIPT" /root/deploy.sh --perms 755
 
+# Pass media mount paths to deploy.sh so it can configure systemd ReadWritePaths
+MEDIA_PATHS=$(IFS=','; echo "${MOUNT_PATHS[*]}")
+
 log "Running deploy.sh inside container (this will take several minutes) ..."
-pct exec "$CTID" -- bash /root/deploy.sh
+pct exec "$CTID" -- bash /root/deploy.sh --media-paths "$MEDIA_PATHS"
 
 # =============================================================================
 # Print access info
@@ -146,6 +168,13 @@ if [[ "$CONTAINER_IP" != "unknown" && -n "$CONTAINER_IP" ]]; then
 else
     echo -e "  IP:        ${YELLOW}Could not detect — check with: pct exec $CTID -- hostname -I${NC}"
 fi
+
+echo ""
+echo -e "  Mounts:"
+for pair in "${MOUNT_PAIRS[@]}"; do
+    echo -e "    ${GREEN}${pair%%:*}${NC} -> ${GREEN}${pair##*:}${NC}"
+done
+
 echo ""
 echo -e "  Manage:    ${CYAN}pct exec $CTID -- bash${NC}"
 echo -e "  Logs:      ${CYAN}pct exec $CTID -- journalctl -u lingarr -f${NC}"
