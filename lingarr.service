@@ -1,0 +1,26 @@
+[Unit]
+Description=Lingarr Subtitle Translation Service
+After=network.target
+
+[Service]
+Type=simple
+User=lingarr
+Group=lingarr
+WorkingDirectory=/opt/lingarr/publish
+ExecStart=/usr/bin/dotnet /opt/lingarr/publish/Lingarr.Server.dll
+EnvironmentFile=/etc/lingarr/lingarr.env
+Restart=always
+RestartSec=10
+SyslogIdentifier=lingarr
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lingarr/config /movies /tv
+PrivateTmp=true
+LimitNOFILE=65536
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
