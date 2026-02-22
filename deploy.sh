@@ -96,9 +96,12 @@ mkdir -p "$LINGARR_HOME"/{source,publish,config,backups}
 mkdir -p /etc/lingarr
 mkdir -p /app
 
-# Symlink for hardcoded /app/config path
+# Symlinks for hardcoded /app/* paths
 ln -sfn "$LINGARR_HOME/config" /app/config
 log "Symlink: /app/config -> $LINGARR_HOME/config"
+
+ln -sfn "$LINGARR_HOME/publish/Statics" /app/Statics
+log "Symlink: /app/Statics -> $LINGARR_HOME/publish/Statics"
 
 # =============================================================================
 # Phase 3: Build
@@ -192,16 +195,7 @@ fi
 # =============================================================================
 log "=== Phase 5: Installing systemd service ==="
 
-# Build ReadWritePaths from media paths
-READ_WRITE_PATHS="/opt/lingarr/config"
-if [[ -n "$MEDIA_PATHS" ]]; then
-    IFS=',' read -ra PATHS <<< "$MEDIA_PATHS"
-    for p in "${PATHS[@]}"; do
-        READ_WRITE_PATHS="$READ_WRITE_PATHS $p"
-    done
-fi
-
-cat > /etc/systemd/system/lingarr.service <<SVCEOF
+cat > /etc/systemd/system/lingarr.service <<'SVCEOF'
 [Unit]
 Description=Lingarr Subtitle Translation Service
 After=network.target
@@ -218,9 +212,7 @@ RestartSec=10
 SyslogIdentifier=lingarr
 
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=$READ_WRITE_PATHS
+ProtectSystem=full
 PrivateTmp=true
 LimitNOFILE=65536
 TimeoutStartSec=120

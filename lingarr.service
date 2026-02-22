@@ -14,9 +14,7 @@ RestartSec=10
 SyslogIdentifier=lingarr
 
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/lingarr/config /movies /tv
+ProtectSystem=full
 PrivateTmp=true
 LimitNOFILE=65536
 TimeoutStartSec=120
